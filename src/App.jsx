@@ -234,13 +234,27 @@ function localized(value, language) {
 }
 
 function normalizeTemplate(template) {
-  return {
+  const normalized = {
     ...template,
     title: typeof template.title === 'string' ? { es: template.title, en: template.title } : template.title,
     category: typeof template.category === 'string' ? { es: template.category, en: template.category } : template.category,
     tone: typeof template.tone === 'string' ? { es: template.tone, en: template.tone } : template.tone,
     body: typeof template.body === 'string' ? { es: template.body, en: template.body } : template.body,
   }
+  const defaultTemplate = defaultTemplates.find((item) => item.id === normalized.id)
+  if (!defaultTemplate) return normalized
+
+  return ['title', 'category', 'tone', 'body'].reduce((templateToFix, key) => {
+    const current = templateToFix[key]
+    const currentEnglish = localized(current, 'en')
+    const currentSpanish = localized(current, 'es')
+    const defaultSpanish = localized(defaultTemplate[key], 'es')
+    const defaultEnglish = localized(defaultTemplate[key], 'en')
+    if (!currentEnglish || currentEnglish === currentSpanish || currentEnglish === defaultSpanish) {
+      return { ...templateToFix, [key]: { ...current, en: defaultEnglish } }
+    }
+    return templateToFix
+  }, normalized)
 }
 
 function normalizeState(state) {
@@ -291,7 +305,6 @@ function App() {
   const [editingTemplate, setEditingTemplate] = useState(false)
   const [cloudLoaded, setCloudLoaded] = useState(!isCloudStorageEnabled())
   const [cloudStatus, setCloudStatus] = useState(isCloudStorageEnabled() ? 'cloudLoading' : 'cloudOff')
-  const firstCloudSave = useRef(true)
 
   const text = copy[language]
   const selectedTemplate = templates.find((template) => template.id === selectedId) || templates[0]
@@ -341,12 +354,8 @@ function App() {
   useEffect(() => {
     saveLocalState(snapshot)
     if (!cloudLoaded || !isCloudStorageEnabled()) return undefined
-    if (firstCloudSave.current) {
-      firstCloudSave.current = false
-      return undefined
-    }
-    setCloudStatus('cloudSaving')
     const timeout = window.setTimeout(() => {
+      setCloudStatus('cloudSaving')
       saveSharedState(snapshot)
         .then(() => setCloudStatus('cloudReady'))
         .catch(() => setCloudStatus('cloudError'))
