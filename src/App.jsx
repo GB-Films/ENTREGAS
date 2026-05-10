@@ -111,6 +111,7 @@ const copy = {
     emptyTitle: 'No copied messages',
     emptyBody: 'When you copy a message, it appears here as a quick team reference.',
     language: 'Language',
+    messageLanguage: 'Language',
     spanish: 'Spanish',
     english: 'English',
     cloudReady: 'Cloud synced',
@@ -121,18 +122,34 @@ const copy = {
   },
 }
 
-const defaultFields = {
-  client: 'Cliente',
-  project: 'Proyecto',
-  piece: 'Video principal',
-  statusKey: 'post',
-  deliveryDate: 'viernes',
-  reviewRound: 'primera vuelta',
-  link: '',
-  nextStep: 'Nos avisan cualquier ajuste y avanzamos con la siguiente version.',
-  notes: 'Estamos cuidando ritmo, color y terminacion general.',
-  sender: 'Equipo BANI',
+const defaultFieldsByLanguage = {
+  es: {
+    client: 'Cliente',
+    project: 'Proyecto',
+    piece: 'Video principal',
+    statusKey: 'post',
+    deliveryDate: 'viernes',
+    reviewRound: 'primera vuelta',
+    link: '',
+    nextStep: 'Nos avisan cualquier ajuste y avanzamos con la siguiente version.',
+    notes: 'Estamos cuidando ritmo, color y terminacion general.',
+    sender: 'Equipo BANI',
+  },
+  en: {
+    client: 'Client',
+    project: 'Project',
+    piece: 'Main video',
+    statusKey: 'post',
+    deliveryDate: 'Friday',
+    reviewRound: 'first round',
+    link: '',
+    nextStep: 'Send us any adjustments and we will move forward with the next version.',
+    notes: 'We are refining rhythm, color and the overall finish.',
+    sender: 'BANI Team',
+  },
 }
+
+const defaultFields = defaultFieldsByLanguage.es
 
 const statuses = [
   { key: 'post', es: 'en proceso de postproduccion', en: 'in postproduction' },
@@ -227,14 +244,21 @@ function normalizeTemplate(template) {
 }
 
 function normalizeState(state) {
+  const language = state?.language === 'en' ? 'en' : 'es'
+  const oppositeLanguage = language === 'en' ? 'es' : 'en'
+  const fields = translateDefaultFieldValues(
+    { ...defaultFieldsByLanguage[language], ...state?.fields, statusKey: state?.fields?.statusKey || 'post' },
+    oppositeLanguage,
+    language,
+  )
   return {
     ...defaultState,
     ...state,
-    fields: { ...defaultFields, ...state?.fields, statusKey: state?.fields?.statusKey || 'post' },
+    fields,
     templates: (state?.templates?.length ? state.templates : defaultTemplates).map(normalizeTemplate),
     selectedId: state?.selectedId || defaultTemplates[0].id,
     history: state?.history || [],
-    language: state?.language === 'en' ? 'en' : 'es',
+    language,
   }
 }
 
@@ -245,6 +269,15 @@ function fillTemplate(template, fields, language) {
     status: status[language],
   }
   return template.replace(/\{(\w+)\}/g, (_, key) => values[key] || '')
+}
+
+function translateDefaultFieldValues(fields, fromLanguage, toLanguage) {
+  const source = defaultFieldsByLanguage[fromLanguage]
+  const target = defaultFieldsByLanguage[toLanguage]
+  return Object.fromEntries(Object.entries(fields).map(([key, value]) => [
+    key,
+    value === source?.[key] ? target?.[key] ?? value : value,
+  ]))
 }
 
 function App() {
@@ -260,7 +293,7 @@ function App() {
   const [cloudStatus, setCloudStatus] = useState(isCloudStorageEnabled() ? 'cloudLoading' : 'cloudOff')
   const firstCloudSave = useRef(true)
 
-  const text = copy.es
+  const text = copy[language]
   const selectedTemplate = templates.find((template) => template.id === selectedId) || templates[0]
   const snapshot = useMemo(() => ({
     language,
@@ -322,6 +355,11 @@ function App() {
   }, [snapshot, cloudLoaded])
 
   const updateField = (key, value) => setFields((current) => ({ ...current, [key]: value }))
+
+  const changeLanguage = (nextLanguage) => {
+    setFields((current) => translateDefaultFieldValues(current, language, nextLanguage))
+    setLanguage(nextLanguage)
+  }
 
   const updateTemplateLocalized = (key, value, targetLanguage = language) => {
     setTemplates((items) => items.map((template) => {
@@ -394,8 +432,8 @@ function App() {
         <div className="language-switch">
           <span>{text.messageLanguage}</span>
           <div>
-            <button className={language === 'es' ? 'active' : ''} onClick={() => setLanguage('es')}>{text.spanish}</button>
-            <button className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>{text.english}</button>
+            <button className={language === 'es' ? 'active' : ''} onClick={() => changeLanguage('es')}>{text.spanish}</button>
+            <button className={language === 'en' ? 'active' : ''} onClick={() => changeLanguage('en')}>{text.english}</button>
           </div>
         </div>
 
@@ -407,15 +445,15 @@ function App() {
               onClick={() => setSelectedId(template.id)}
             >
               <MessageSquareText size={16} />
-              {localized(template.title, 'es')}
+              {localized(template.title, language)}
             </button>
           ))}
         </nav>
 
         <div className="side-total">
           <span>{text.activeMessage}</span>
-          <strong>{localized(selectedTemplate.category, 'es')}</strong>
-          <small>{selectedTemplate.channel} - {localized(selectedTemplate.tone, 'es')}</small>
+          <strong>{localized(selectedTemplate.category, language)}</strong>
+          <small>{selectedTemplate.channel} - {localized(selectedTemplate.tone, language)}</small>
         </div>
       </aside>
 
@@ -464,7 +502,7 @@ function App() {
           </div>
 
           <div className="panel preview-panel">
-            <SectionTitle icon={<Send />} eyebrow={text.preview} title={localized(selectedTemplate.title, 'es')} />
+            <SectionTitle icon={<Send />} eyebrow={text.preview} title={localized(selectedTemplate.title, language)} />
             <div className="message-preview">{message}</div>
             <div className="quick-actions">
               <a className="ghost" href={`mailto:?subject=${encodeURIComponent(`${fields.project} - ${fields.piece}`)}&body=${encodeURIComponent(message)}`}>
@@ -495,13 +533,13 @@ function App() {
               <div className="template-form">
                 <div className="editor-language-note">
                   <Languages size={16} />
-                  <span>{language === 'es' ? 'Editando mensaje en castellano' : 'Editando mensaje en ingles'}</span>
+                  <span>{language === 'es' ? 'Editando version en castellano' : 'Editing English version'}</span>
                 </div>
                 <div className="form-grid compact">
-                  <Input label={text.title} value={localized(selectedTemplate.title, 'es')} onChange={(value) => updateTemplateLocalized('title', value, 'es')} />
-                  <Input label={text.category} value={localized(selectedTemplate.category, 'es')} onChange={(value) => updateTemplateLocalized('category', value, 'es')} />
+                  <Input label={text.title} value={localized(selectedTemplate.title, language)} onChange={(value) => updateTemplateLocalized('title', value)} />
+                  <Input label={text.category} value={localized(selectedTemplate.category, language)} onChange={(value) => updateTemplateLocalized('category', value)} />
                   <Input label={text.channel} value={selectedTemplate.channel} onChange={(value) => setTemplates((items) => items.map((template) => template.id === selectedTemplate.id ? { ...template, channel: value } : template))} />
-                  <Input label={text.tone} value={localized(selectedTemplate.tone, 'es')} onChange={(value) => updateTemplateLocalized('tone', value, 'es')} />
+                  <Input label={text.tone} value={localized(selectedTemplate.tone, language)} onChange={(value) => updateTemplateLocalized('tone', value)} />
                 </div>
                 <Textarea label={text.body} value={localized(selectedTemplate.body, language)} onChange={(value) => updateTemplateLocalized('body', value)} />
                 <p className="token-help">{text.tokens}: {'{client}'} {'{project}'} {'{piece}'} {'{status}'} {'{deliveryDate}'} {'{reviewRound}'} {'{link}'} {'{notes}'} {'{nextStep}'} {'{sender}'}</p>
